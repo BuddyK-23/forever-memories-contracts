@@ -7,12 +7,23 @@ import {_LSP4_METADATA_KEY} from "@lukso/lsp-smart-contracts/contracts/LSP4Digit
 import {LSP8CollectionHelper} from "./LSP8CollectionHelper.sol";
 import {LSP8CollectionMinter} from "./LSP8CollectionMinter.sol";
 
+
+interface ILSP7SubCollection {
+    function transfer(address from, address to, uint256 amount, bool force, bytes calldata data) external;
+    function balanceOf(address account) external view returns (uint256);
+    function allowance(address owner, address spender) external view returns (uint256);
+}
+
 contract ForeverMemoryCollection is LSP8IdentifiableDigitalAsset {
     uint256 public rewardAmount;
-    uint256 public totalMintCount; // Variable to store total mint count
     mapping(address => uint256) public lastClaimed;
-    address[] public mintedAddresses; // Array to store minted addresses
-    mapping(address => uint256) public mintingDates; // Mapping to store minting dates
+    mapping(address => uint256) public mintingDates;
+    mapping(bytes32 => address[]) public tokenLikes;
+    mapping(bytes32 => mapping(address => bool)) public hasLiked;
+
+    event Mint(address indexed minter, address indexed lsp7SubCollectionAddress, uint256 timestamp);
+    event Like(address indexed liker, bytes32 indexed tokenId);
+    event Transfer(address indexed from, address indexed to, bytes32 indexed tokenId, uint256 amount, bytes data);
 
     constructor(
         string memory name_,
@@ -30,7 +41,6 @@ contract ForeverMemoryCollection is LSP8IdentifiableDigitalAsset {
             _LSP8_TOKENID_FORMAT_ADDRESS
         )
     {
-        // set the lsp4MetadataURI
         _setData(_LSP4_METADATA_KEY, lsp4MetadataURI_);
         rewardAmount = _rewardAmount;
     }
@@ -45,6 +55,8 @@ contract ForeverMemoryCollection is LSP8IdentifiableDigitalAsset {
         bytes memory lsp4MetadataURIOfLSP7_
     ) public returns (address lsp7SubCollectionAddress) {
         require(!mintState(), "Minting only once a day");
+
+        // Mint new LSP7 sub-collection
         lsp7SubCollectionAddress = LSP8CollectionMinter.mint(
             nameOfLSP7_,
             symbolOfLSP7_,
@@ -55,42 +67,45 @@ contract ForeverMemoryCollection is LSP8IdentifiableDigitalAsset {
             lsp4MetadataURIOfLSP7_
         );
 
-        // Increment total mint count
-        totalMintCount++;
-
-        // Convert the address of the LSP7SubCollection to bytes32 to use it as tokenId
+        // Create a corresponding LSP8 token
         bytes32 tokenId = bytes32(uint256(uint160(lsp7SubCollectionAddress)));
-
-        // Mint the token
         _mint(address(this), tokenId, true, "");
 
-        // Record the last claimed time for the minter
-        lastClaimed[receiverOfInitialTokens_] = block.timestamp;
-
-        // Store the minted address
-        mintedAddresses.push(lsp7SubCollectionAddress);
-
-        // Store the minting date
+        lastClaimed[msg.sender] = block.timestamp;
         mintingDates[lsp7SubCollectionAddress] = block.timestamp;
+
+        emit Mint(msg.sender, lsp7SubCollectionAddress, block.timestamp);
     }
 
     function mintState() internal view returns (bool) {
-        if (block.timestamp >= lastClaimed[msg.sender] + 86400) {
-            return false;
-        }
-        return true;
+        return block.timestamp < lastClaimed[msg.sender] + 1 days;
     }
 
     function setRewardAmount(uint256 _rewardAmount) external onlyOwner {
         rewardAmount = _rewardAmount;
     }
 
-    // Function to get the minting date of a specific LSP7 collection
     function getMintingDate(address lsp7CollectionAddress) public view returns (uint256) {
         return mintingDates[lsp7CollectionAddress];
     }
 
-    // Override the _setDataForTokenId function to set the data on the LSP7SubCollection itself
+    function like(bytes32 tokenId) public {
+        require(!hasLiked[tokenId][msg.sender], "You can only like a token once");
+        tokenLikes[tokenId].push(msg.sender);
+        hasLiked[tokenId][msg.sender] = true;
+
+        emit Like(msg.sender, tokenId);
+    }
+
+    function getLikes(bytes32 tokenId) public view returns (address[] memory) {
+        return tokenLikes[tokenId];
+    } 
+
+    function getAuthorizedAmount(bytes32 tokenId) public view returns (uint256) {
+        address lsp7SubCollectionAddress = address(uint160(uint256(tokenId)));
+        return ILSP7SubCollection(lsp7SubCollectionAddress).allowance(msg.sender, address(this));
+    } 
+
     function _setDataForTokenId(
         bytes32 tokenId,
         bytes32 dataKey,
@@ -100,11 +115,29 @@ contract ForeverMemoryCollection is LSP8IdentifiableDigitalAsset {
         emit TokenIdDataChanged(tokenId, dataKey, dataValue);
     }
 
-    // Override the _getDataForTokenId function to get the data from the LSP7SubCollection itself
     function _getDataForTokenId(
         bytes32 tokenId,
         bytes32 dataKey
     ) internal view override returns (bytes memory dataValues) {
         return LSP8CollectionHelper.getDataForTokenId(tokenId, dataKey);
+    }
+    
+    // New function to transfer LSP7-based NFTs
+    function transferNFT(
+        bytes32 tokenId,
+        address to,
+        uint256 amount,
+        bytes memory data
+    ) public {
+        require(amount > 0, "Amount must be greater than zero");
+
+        // Get the LSP7SubCollection address from the tokenId
+        address lsp7SubCollectionAddress = address(uint160(uint256(tokenId)));
+
+        // Call the transfer method in LSP7SubCollection contract
+        ILSP7SubCollection(lsp7SubCollectionAddress).transfer(msg.sender, to, amount, true, data);
+        
+        // Emit transfer event specific to LSP7SubCollection transfer
+        emit Transfer(msg.sender, to, tokenId, amount, data);
     }
 }
