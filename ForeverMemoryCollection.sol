@@ -16,10 +16,13 @@ interface ILSP7SubCollection {
 
 contract ForeverMemoryCollection is LSP8IdentifiableDigitalAsset {
     uint256 public rewardAmount;
+    uint256 public lsp7TokenType;
+
     mapping(address => uint256) public lastClaimed;
     mapping(address => uint256) public mintingDates;
     mapping(bytes32 => address[]) public tokenLikes;
     mapping(bytes32 => mapping(address => bool)) public hasLiked;
+    mapping(address => bytes) public encryptedEncryptionKeys;
 
     event Mint(address indexed minter, address indexed lsp7SubCollectionAddress, uint256 timestamp);
     event Like(address indexed liker, bytes32 indexed tokenId);
@@ -52,15 +55,18 @@ contract ForeverMemoryCollection is LSP8IdentifiableDigitalAsset {
         bool isNonDivisible_,
         uint256 totalSupplyOfLSP7_,
         address receiverOfInitialTokens_,
-        bytes memory lsp4MetadataURIOfLSP7_
+        bytes memory lsp4MetadataURIOfLSP7_,
+        bytes memory encryptedEncryptionKey_
     ) public returns (address lsp7SubCollectionAddress) {
         require(!mintState(), "Minting only once a day");
+
+        lsp7TokenType = 2;
 
         // Mint new LSP7 sub-collection
         lsp7SubCollectionAddress = LSP8CollectionMinter.mint(
             nameOfLSP7_,
             symbolOfLSP7_,
-            lsp4TokenType_,
+            lsp7TokenType,
             isNonDivisible_,
             totalSupplyOfLSP7_,
             receiverOfInitialTokens_,
@@ -74,6 +80,8 @@ contract ForeverMemoryCollection is LSP8IdentifiableDigitalAsset {
         lastClaimed[msg.sender] = block.timestamp;
         mintingDates[lsp7SubCollectionAddress] = block.timestamp;
 
+        storeEncryptedKey(lsp7SubCollectionAddress, encryptedEncryptionKey_);
+
         emit Mint(msg.sender, lsp7SubCollectionAddress, block.timestamp);
     }
 
@@ -83,6 +91,14 @@ contract ForeverMemoryCollection is LSP8IdentifiableDigitalAsset {
 
     function setRewardAmount(uint256 _rewardAmount) external onlyOwner {
         rewardAmount = _rewardAmount;
+    }
+
+    function storeEncryptedKey(address lsp7contractaddress, bytes memory encryptedEncryptionKey) public {
+        encryptedEncryptionKeys[lsp7contractaddress] = encryptedEncryptionKey;
+    }
+
+    function getEncryptedKey(address lsp7contractaddress) public view returns (bytes memory) {
+        return encryptedEncryptionKeys[lsp7contractaddress];
     }
 
     function getMintingDate(address lsp7CollectionAddress) public view returns (uint256) {
