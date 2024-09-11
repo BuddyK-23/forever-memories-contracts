@@ -78,7 +78,7 @@ contract VaultFactory {
             creationTime: block.timestamp  // Store the current time
         }));
 
-        vaultsOwner[address(newContract)] = msg.sender;
+        vaultsOwner[address(this)] = msg.sender;
 
         return address(this);
     }
@@ -89,7 +89,8 @@ contract VaultFactory {
         string memory imageURI,
         uint8[] memory categories,
         uint256 memberCount,
-        address vaultOwner 
+        address vaultOwner,
+        uint8 vaultMode
     ) {
         FMVault storage vault = vaults[vaultAddress];
 
@@ -99,6 +100,7 @@ contract VaultFactory {
         categories = vault.categories;  // Retrieve categories
         memberCount = vault.userLists.length;  // Retrieve user count
         vaultOwner = vaultsOwner[vaultAddress];
+        vaultMode = vault.vaultMode;
     }
 
 
@@ -114,6 +116,30 @@ contract VaultFactory {
             creationTime: block.timestamp  // Store the current time
         }));
     }
+
+    function leaveVault(address vaultAddress) external {
+        FMVault storage vault = vaults[vaultAddress];
+
+        // Ensure the vault owner cannot leave without transferring ownership
+        require(vaultsOwner[vaultAddress] != msg.sender, "Vault owner cannot leave the vault. Transfer ownership first.");
+
+        bool found = false;
+        
+        // Find the index of the user in the userLists array
+        for (uint256 i = 0; i < vault.userLists.length; i++) {
+            if (vault.userLists[i].memberAddress == msg.sender) {
+                found = true;
+
+                // Remove the user by shifting the array
+                vault.userLists[i] = vault.userLists[vault.userLists.length - 1];  // Move the last element to the current index
+                vault.userLists.pop();  // Remove the last element (now duplicated)
+                break;
+            }
+        }
+
+        require(found, "User is not a member of this vault");
+    }
+
 
     function inviteMember(address vaultAddress, address invitedMember) external {
         FMVault storage vault = vaults[vaultAddress];
