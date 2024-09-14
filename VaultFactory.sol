@@ -42,8 +42,6 @@ contract VaultFactory {
         address firstMemberAddress_,
         uint8[] memory categories_ // Add categories parameter (changed to uint8[])
     ) external returns (address) {
-        require(msg.sender == owner, "Only the owner can perform this action");
-
         SubVault newContract = new SubVault();
 
         // Store the vault metadata and details in FMVault struct
@@ -189,52 +187,6 @@ contract VaultFactory {
         return unjoinedVaults;
     }
 
-    function getPublicVaultsOwnedByUser(address userAddress) external view returns (address[] memory) {
-        address[] memory tempVaults = new address[](publicVaults.length);  // Temporary array to store vault addresses
-        uint256 count = 0;  // Counter for the vaults owned by the user
-
-        for (uint256 i = 0; i < publicVaults.length; i++) {
-            address vaultAddress = publicVaults[i];
-            
-            // Check if the vault is owned by the user and is a public vault
-            if (vaultsOwner[vaultAddress] == userAddress) {
-                tempVaults[count] = vaultAddress;
-                count++;
-            }
-        }
-
-        // Create a new array of the correct size to return
-        address[] memory ownedVaults = new address[](count);
-        for (uint256 k = 0; k < count; k++) {
-            ownedVaults[k] = tempVaults[k];
-        }
-
-        return ownedVaults;
-    }
-
-    function getPrivateVaultsOwnedByUser(address userAddress) external view returns (address[] memory) {
-        address[] memory tempVaults = new address[](privateVaults.length);  // Temporary array to store vault addresses
-        uint256 count = 0;  // Counter for the vaults owned by the user
-
-        for (uint256 i = 0; i < privateVaults.length; i++) {
-            address vaultAddress = privateVaults[i];
-            
-            // Check if the vault is owned by the user and is a public vault
-            if (vaultsOwner[vaultAddress] == userAddress) {
-                tempVaults[count] = vaultAddress;
-                count++;
-            }
-        }
-
-        // Create a new array of the correct size to return
-        address[] memory ownedVaults = new address[](count);
-        for (uint256 k = 0; k < count; k++) {
-            ownedVaults[k] = tempVaults[k];
-        }
-
-        return ownedVaults;
-    }
-
     function getRewardAmount(address vaultAddress) public view returns (uint256) {
         FMVault storage vault = vaults[vaultAddress];
         return vault.rewardAmount;
@@ -301,7 +253,54 @@ contract VaultFactory {
         return privateVaults;
     }
 
-    function getPublicVaultsJoinedByUser(address userAddress) external view returns (address[] memory) {
+    function getPublicVaultsOwnedByUser(address userAddress) external view returns (address[] memory) {
+        address[] memory tempVaults = new address[](publicVaults.length);  // Temporary array to store vault addresses
+        uint256 count = 0;  // Counter for the vaults owned by the user
+
+        for (uint256 i = 0; i < publicVaults.length; i++) {
+            address vaultAddress = publicVaults[i];
+            
+            // Check if the vault is owned by the user and is a public vault
+            if (vaultsOwner[vaultAddress] == userAddress) {
+                tempVaults[count] = vaultAddress;
+                count++;
+            }
+        }
+
+        // Create a new array of the correct size to return
+        address[] memory ownedVaults = new address[](count);
+        for (uint256 k = 0; k < count; k++) {
+            ownedVaults[k] = tempVaults[k];
+        }
+
+        return ownedVaults;
+    }
+
+    function getPrivateVaultsOwnedByUser(address userAddress) external view returns (address[] memory) {
+        address[] memory tempVaults = new address[](privateVaults.length);  // Temporary array to store vault addresses
+        uint256 count = 0;  // Counter for the vaults owned by the user
+
+        for (uint256 i = 0; i < privateVaults.length; i++) {
+            address vaultAddress = privateVaults[i];
+            
+            // Check if the vault is owned by the user and is a public vault
+            if (vaultsOwner[vaultAddress] == userAddress) {
+                tempVaults[count] = vaultAddress;
+                count++;
+            }
+        }
+
+        // Create a new array of the correct size to return
+        address[] memory ownedVaults = new address[](count);
+        for (uint256 k = 0; k < count; k++) {
+            ownedVaults[k] = tempVaults[k];
+        }
+
+        return ownedVaults;
+    }
+
+    // all public vaults that I created or joint
+    function getPublicVaultsByUser(address userAddress) external view returns (address[] memory) {
         address[] memory tempVaults = new address[](publicVaults.length);  // Temporary array to store the vault addresses
         uint256 count = 0;  // Counter for the vaults the user has joined
 
@@ -329,7 +328,8 @@ contract VaultFactory {
         return joinedVaults;
     }
 
-    function getPrivateVaultsInvitedByUser(address userAddress) external view returns (address[] memory) {
+    // all private vaults that I created or invited
+    function getPrivateVaultsByUser(address userAddress) external view returns (address[] memory) {
         address[] memory tempVaults = new address[](privateVaults.length);  // Temporary array to store the vault addresses
         uint256 count = 0;  // Counter for the vaults the user has been invited to
 
@@ -356,4 +356,50 @@ contract VaultFactory {
 
         return invitedVaults;
     }
+
+    // burn vault
+    function burnVault(address vaultAddress) external {
+        // Ensure the sender is the owner of the vault
+        require(vaultsOwner[vaultAddress] == owner, "Only the vault owner can delete the vault.");
+
+        FMVault storage vault = vaults[vaultAddress];
+
+        // Remove the vault from the public or private vaults array
+        if (vault.vaultMode == 0) {  // public vault
+            _removeVaultFromList(publicVaults, vaultAddress);
+        } else if (vault.vaultMode == 1) {  // private vault
+            _removeVaultFromList(privateVaults, vaultAddress);
+        }
+
+        // Remove the vault from the category mappings
+        for (uint256 i = 0; i < vault.categories.length; i++) {
+            _removeVaultFromCategory(vault.categories[i], vaultAddress);
+        }
+
+        // Delete the vault data from the mappings
+        delete vaults[vaultAddress];
+        delete vaultsOwner[vaultAddress];
+    }
+
+    function _removeVaultFromList(address[] storage vaultList, address vaultAddress) internal {
+        for (uint256 i = 0; i < vaultList.length; i++) {
+            if (vaultList[i] == vaultAddress) {
+                vaultList[i] = vaultList[vaultList.length - 1];  // Move the last element to the current index
+                vaultList.pop();  // Remove the last element
+                break;
+            }
+        }
+    }
+
+    function _removeVaultFromCategory(uint8 category, address vaultAddress) internal {
+        address[] storage categoryVaults = categoryToVaults[category];
+        for (uint256 i = 0; i < categoryVaults.length; i++) {
+            if (categoryVaults[i] == vaultAddress) {
+                categoryVaults[i] = categoryVaults[categoryVaults.length - 1];  // Move the last element to the current index
+                categoryVaults.pop();  // Remove the last element
+                break;
+            }
+        }
+    }
+
 }
