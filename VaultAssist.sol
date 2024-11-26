@@ -10,6 +10,10 @@ contract VaultAssist {
 
     mapping(bytes32 => Comment[]) public commentsList;
     mapping(bytes32 => string) public longDescription;
+    mapping(bytes32 => address[]) public tokenLikes;
+    mapping(bytes32 => address[]) public tokenDislikes;
+    mapping(bytes32 => mapping(address => bool)) public hasLiked;
+    mapping(bytes32 => mapping(address => bool)) public hasDisliked;
 
     // Constructor
     constructor(address newOwner) {}
@@ -39,7 +43,11 @@ contract VaultAssist {
     function getAllComments(bytes32 tokenId)
         external
         view
-        returns (address[] memory, string[] memory, uint256[] memory)
+        returns (
+            address[] memory,
+            string[] memory,
+            uint256[] memory
+        )
     {
         uint256 commentCount = commentsList[tokenId].length;
         address[] memory usernames = new address[](commentCount);
@@ -69,7 +77,9 @@ contract VaultAssist {
      * @param tokenId The ID of the token
      * @param description The long description to set
      */
-    function setLongDescription(bytes32 tokenId, string memory description) external {
+    function setLongDescription(bytes32 tokenId, string memory description)
+        external
+    {
         longDescription[tokenId] = description;
     }
 
@@ -78,7 +88,81 @@ contract VaultAssist {
      * @param tokenId The ID of the token
      * @return The long description of the given tokenId
      */
-    function getLongDescription(bytes32 tokenId) external view returns (string memory) {
+    function getLongDescription(bytes32 tokenId)
+        external
+        view
+        returns (string memory)
+    {
         return longDescription[tokenId];
+    }
+
+    function like(bytes32 tokenId) external {
+        // Check if the user has disliked the token
+        if (hasDisliked[tokenId][msg.sender]) {
+            // Remove the user from the dislike list
+            address[] storage dislikes = tokenDislikes[tokenId];
+            for (uint256 i = 0; i < dislikes.length; i++) {
+                if (dislikes[i] == msg.sender) {
+                    // Swap and pop to remove efficiently
+                    dislikes[i] = dislikes[dislikes.length - 1];
+                    dislikes.pop();
+                    break;
+                }
+            }
+            hasDisliked[tokenId][msg.sender] = false;
+        } else {
+            // Check if the user has already liked the token
+            require(
+                !hasLiked[tokenId][msg.sender],
+                "You can only like a token once"
+            );
+
+            // Add the user to the like list
+            tokenLikes[tokenId].push(msg.sender);
+            hasLiked[tokenId][msg.sender] = true;
+        }
+    }
+
+    function getLikes(bytes32 tokenId)
+        external
+        view
+        returns (address[] memory)
+    {
+        return tokenLikes[tokenId];
+    }
+
+    function dislike(bytes32 tokenId) external {
+        // Check if the user has liked the token
+        if (hasLiked[tokenId][msg.sender]) {
+            // Remove the user from the like list
+            address[] storage likes = tokenLikes[tokenId];
+            for (uint256 i = 0; i < likes.length; i++) {
+                if (likes[i] == msg.sender) {
+                    // Swap and pop to remove efficiently
+                    likes[i] = likes[likes.length - 1];
+                    likes.pop();
+                    break;
+                }
+            }
+            hasLiked[tokenId][msg.sender] = false;
+        } else {
+            // Check if the user has already disliked the token
+            require(
+                !hasDisliked[tokenId][msg.sender],
+                "You can only dislike a token once"
+            );
+
+            // Add the user to the dislike list
+            tokenDislikes[tokenId].push(msg.sender);
+            hasDisliked[tokenId][msg.sender] = true;
+        }
+    }
+
+    function getDislikes(bytes32 tokenId)
+        external
+        view
+        returns (address[] memory)
+    {
+        return tokenDislikes[tokenId];
     }
 }
